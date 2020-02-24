@@ -10,7 +10,6 @@ rp(url)
       .toArray()
       .map( a => a.attribs.href);
 
-    console.log(chapterList)
     return chapterList;
   })
   .then( chapterList => chapterList.map( async (chapterA, idx) => {
@@ -37,8 +36,37 @@ rp(url)
   }))
   .then( async promiseArray => {
     const result = await Promise.all(promiseArray)
-    console.log('ALEXDEBUG: end', result)
+
+    return result;
   })
+  .then(async pageAnchorByChapterArray => {
+    const imageURLresult = [];
+    for(let i = 0; i < 3; i++){
+      const pageAnchorArray = pageAnchorByChapterArray[i];
+
+      const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
+        const pageURL = `http://www.mangareader.net${pageAnchor}`;
+
+        return rp(pageURL)
+          .then(pageHTML => {
+            const imageURL$ = cheerio.load(pageHTML);
+            const imageURL = imageURL$('#img')[0].attribs.src
+
+            return imageURL;
+          })
+          .catch(err => {
+            //handle error
+
+            console.log("ALEXDEBUG: page collection error", err)
+          });
+      }));
+
+      imageURLresult.push(pageImageMap);
+    }
+
+    return imageURLresult;
+  })
+  .then(imageURLresult => console.log('ALEXDEBUG: imageResult', imageURLresult))
   .catch(err => {
     //handle error
 
