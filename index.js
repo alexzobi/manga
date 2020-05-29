@@ -1,12 +1,29 @@
 const rp = require('request-promise');
 const cheerio = require('cheerio');
-const url = 'http://www.mangareader.net/goblin-slayer';
 const download = require('image-downloader')
 const fs = require('fs');
 
+/*
+ *** NOTE: ***
+ After running this file, the code might hang and not all images will be downloaded.
+ I have a feeling this has to do with the websites preventing this sort of behavior.
+ To handle this, just kill and re-run the script. The remaining images will automatically
+ be downloaded.
+
+ This file has only been tested with mangareader.net. other sites will require different
+ scraping paths.
+*/
+
+const url = process.argv[2];
+
+if (!url){
+  console.error('You must give a url for this program to work!');
+
+  process.exit()
+}
+
 rp(url)
   .then(html => {
-    //success!
     const chapterList$ = cheerio.load(html);
     const chapterList = chapterList$('div #chapterlist > table > tbody > tr > td > a')
       .toArray()
@@ -14,7 +31,7 @@ rp(url)
 
     return chapterList;
   })
-  .then( chapterList => chapterList.map( async (chapterA, idx) => {
+  .then( chapterList => chapterList.map( async (chapterA) => {
     const chapterURL = `http://www.mangareader.net${chapterA}`;
 
     return rp(chapterURL)
@@ -25,7 +42,6 @@ rp(url)
           .toArray()
           .map(option => option.attribs.value)
 
-        // console.log(`Chapter ${idx} pagelist`, pageList)
         return pageList;
       })
       .catch(err => {
@@ -33,8 +49,6 @@ rp(url)
 
         console.log("ALEXDEBUG: page collection error", err)
       });
-
-    // return result
   }))
   .then( async promiseArray => {
     const result = await Promise.all(promiseArray)
@@ -43,8 +57,11 @@ rp(url)
   })
   .then(async pageAnchorByChapterArray => {
     const imageURLByChapterArray = [];
+    const chapterNameArray = [];
+
     for(let i = 0; i < pageAnchorByChapterArray.length; i++){
       const pageAnchorArray = pageAnchorByChapterArray[i];
+      const chapterName = pageAnchorByChapterArray[i][0];
 
       const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
         const pageURL = `http://www.mangareader.net${pageAnchor}`;
@@ -64,15 +81,17 @@ rp(url)
       }));
 
       imageURLByChapterArray.push(pageImageMap);
+      chapterNameArray.push(chapterName);
     }
 
-    return imageURLByChapterArray;
+    return {chapterNameArray, imageURLByChapterArray};
   })
-  .then(async imageURLByChapterArray => Promise.all([
+  .then(async ({ chapterNameArray, imageURLByChapterArray}) => Promise.all([
     await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
-      await chapter.forEach(async (imageURL, imageIdx) => {
-        const directory = `./goblinSlayer/Chapter_${chapterIdx + 1}`;
+      const directory = `./series${chapterNameArray[chapterIdx]}`;
+      const chapterNumber = chapterNameArray[chapterIdx].split('/').pop()
 
+      await chapter.forEach(async (imageURL, imageIdx) => {
         const directoryExists = fs.existsSync(directory)
 
         if (!directoryExists) {
@@ -85,7 +104,7 @@ rp(url)
 
         const urlArray = imageURL.split('.');
         const filetype = urlArray[urlArray.length -1];
-        const dest = `${directory}/${imageIdx + 1}.${filetype}`
+        const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
 
         if (!fs.existsSync(dest)){
           const options = {
@@ -98,7 +117,7 @@ rp(url)
             .then(({ filename, image }) => {
               console.log('Saved to', filename) // Saved to /path/to/dest/photo
             })
-            .catch((err) => console.error("ALEXDEBUG: image download error",err))
+            .catch((err) => console.error(`ALEXDEBUG: ${options.url} download error`,err))
         }
       })
     })
