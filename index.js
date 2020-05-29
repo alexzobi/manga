@@ -1,6 +1,8 @@
 const rp = require('request-promise');
 const cheerio = require('cheerio');
 const url = 'http://www.mangareader.net/goblin-slayer';
+const download = require('image-downloader')
+const fs = require('fs');
 
 rp(url)
   .then(html => {
@@ -40,8 +42,8 @@ rp(url)
     return result;
   })
   .then(async pageAnchorByChapterArray => {
-    const imageURLresult = [];
-    for(let i = 0; i < 3; i++){
+    const imageURLByChapterArray = [];
+    for(let i = 0; i < pageAnchorByChapterArray.length; i++){
       const pageAnchorArray = pageAnchorByChapterArray[i];
 
       const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
@@ -61,12 +63,46 @@ rp(url)
           });
       }));
 
-      imageURLresult.push(pageImageMap);
+      imageURLByChapterArray.push(pageImageMap);
     }
 
-    return imageURLresult;
+    return imageURLByChapterArray;
   })
-  .then(imageURLresult => console.log('ALEXDEBUG: imageResult', imageURLresult))
+  .then(async imageURLByChapterArray => Promise.all([
+    await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
+      await chapter.forEach(async (imageURL, imageIdx) => {
+        const directory = `./goblinSlayer/Chapter_${chapterIdx + 1}`;
+
+        const directoryExists = fs.existsSync(directory)
+
+        if (!directoryExists) {
+          fs.mkdirSync(directory, { recursive: true }, (err) => {
+            // => [Error: EPERM: operation not permitted, mkdir 'C:\']
+            if (err) throw err;
+          });
+        }
+
+
+        const urlArray = imageURL.split('.');
+        const filetype = urlArray[urlArray.length -1];
+        const dest = `${directory}/${imageIdx + 1}.${filetype}`
+
+        if (!fs.existsSync(dest)){
+          const options = {
+            url: imageURL,
+            dest, // Save to /path/to/dest/photo
+            extractFilename: false
+          }
+
+          await download.image(options)
+            .then(({ filename, image }) => {
+              console.log('Saved to', filename) // Saved to /path/to/dest/photo
+            })
+            .catch((err) => console.error("ALEXDEBUG: image download error",err))
+        }
+      })
+    })
+  ]))
   .catch(err => {
     //handle error
 
