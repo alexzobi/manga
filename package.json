@@ -4,11 +4,13 @@
   "main": "index.js",
   "author": "Alex <asobiloff@gmail.com>",
   "license": "MIT",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
+    "axios": "^0.19.2",
     "cheerio": "^1.0.0-rc.3",
-    "image-downloader": "^3.5.0",
-    "puppeteer": "^2.1.1",
-    "request": "^2.88.2",
-    "request-promise": "^4.2.5"
+    "puppeteer": "^3.3.0",
+    "yargs": "^15.3.1"
   }
 }

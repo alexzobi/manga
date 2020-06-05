@@ -1,7 +1,24 @@
-const rp = require('request-promise');
+const axios = require('axios');
 const cheerio = require('cheerio');
-const download = require('image-downloader')
 const fs = require('fs');
+// const download = require('image-downloader')
+const download = require('./requestWrapper');
+
+const argv = require('yargs')
+  .usage('Usage: $0 <url> [options]')
+  .command('url', 'the url of the manga chapterlist you\'d like to read from')
+  .example('$0 http://www.mangareader.net/goblin-slayer -s 10 -e 20', 'get Goblin Slayer starting from chapter 10 and ending after chapter 20')
+  .alias('s', 'start')
+  .nargs('s', 1)
+  .describe('s', 'Chapter in the given chapter list to start from')
+  .default('s', 1)
+  .alias('e', 'end')
+  .nargs('e', 1)
+  .describe('e', 'Chapter in the given chapter list to end on')
+  .help('h')
+  .alias('h', 'help')
+  .epilog('copyright 2020')
+  .argv;
 
 /*
  *** NOTE: ***
@@ -22,19 +39,26 @@ if (!url){
   process.exit()
 }
 
-rp(url)
+axios.get(url)
+  .then(res => res.data)
   .then(html => {
     const chapterList$ = cheerio.load(html);
     const chapterList = chapterList$('div #chapterlist > table > tbody > tr > td > a')
       .toArray()
       .map( a => a.attribs.href);
 
-    return chapterList;
+    const startIndex = chapterList.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start))
+    const endIndex = argv.end
+      ? chapterList.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
+      : chapterList.length
+
+    return chapterList.slice(startIndex, endIndex);
   })
   .then( chapterList => chapterList.map( async (chapterA) => {
     const chapterURL = `http://www.mangareader.net${chapterA}`;
 
-    return rp(chapterURL)
+    return axios.get(chapterURL)
+      .then(res => res.data)
       .then(pageHTML => {
         const pageList$ = cheerio.load(pageHTML);
         const pageList = pageList$('#pageMenu')
@@ -66,7 +90,8 @@ rp(url)
       const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
         const pageURL = `http://www.mangareader.net${pageAnchor}`;
 
-        return rp(pageURL)
+        return axios.get(pageURL)
+          .then(res => res.data)
           .then(pageHTML => {
             const imageURL$ = cheerio.load(pageHTML);
             const imageURL = imageURL$('#img')[0].attribs.src
@@ -101,7 +126,6 @@ rp(url)
           });
         }
 
-
         const urlArray = imageURL.split('.');
         const filetype = urlArray[urlArray.length -1];
         const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
@@ -113,7 +137,7 @@ rp(url)
             extractFilename: false
           }
 
-          await download.image(options)
+          await download(options)
             .then(({ filename, image }) => {
               console.log('Saved to', filename) // Saved to /path/to/dest/photo
             })
