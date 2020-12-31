@@ -1,7 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
-// const download = require('image-downloader')
 const download = require('./requestWrapper');
 
 const argv = require('yargs')
@@ -42,17 +41,54 @@ if (!url){
 axios.get(url)
   .then(res => res.data)
   .then(html => {
+    // this function is responsible for finding all of the links for the available
+    // chapters on the home page of the manga
+
+    const name = url.split('/')[3]
     const chapterList$ = cheerio.load(html);
-    const chapterList = chapterList$('div #chapterlist > table > tbody > tr > td > a')
+    const chapterList = chapterList$('a')
+      .filter((idx, elem) => {
+        // console.log('ALEXDEBUG: elem', elem.attr('href'))
+
+        return elem.attribs.href.startsWith(name, 1);
+      })
       .toArray()
-      .map( a => a.attribs.href);
+      .map(elem => elem.attribs.href)
 
-    const startIndex = chapterList.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start))
+    const sortedChapters = Array.from(new Set(chapterList)).sort((a, b) => {
+      const chapterANumber = +a.split('/')[2]
+      const chapterBNumber = +b.split('/')[2]
+
+      if (chapterANumber < chapterBNumber) return -1;
+
+      return 1;
+    });
+
+
+
+    console.log('ALEXDEBUG: sortedChapters', sortedChapters)
+
+    const startIndex = sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start))
     const endIndex = argv.end
-      ? chapterList.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
-      : chapterList.length
+      ? sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
+      : sortedChapters.length
 
-    return chapterList.slice(startIndex, endIndex);
+    console.log('ALEXDEBUG: startIndex', startIndex);
+    console.log('ALEXDEBUG: endIndex', endIndex);
+
+    const finalChapterList = sortedChapters.slice(startIndex, endIndex);
+
+    if (finalChapterList.length) {
+      console.log(`${finalChapterList.length} chapters found. Fetching chapters...`)
+    } else {
+      console.error('No chapters found within specified range');
+
+      process.exit()
+    }
+
+    console.log('ALEXDEBUG: finalChapterList', finalChapterList)
+
+    return finalChapterList;
   })
   .then( chapterList => chapterList.map( async (chapterA) => {
     const chapterURL = `http://www.mangareader.net${chapterA}`;
