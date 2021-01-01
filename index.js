@@ -48,8 +48,6 @@ axios.get(url)
     const chapterList$ = cheerio.load(html);
     const chapterList = chapterList$('a')
       .filter((idx, elem) => {
-        // console.log('ALEXDEBUG: elem', elem.attr('href'))
-
         return elem.attribs.href.startsWith(name, 1);
       })
       .toArray()
@@ -64,22 +62,15 @@ axios.get(url)
       return 1;
     });
 
-
-
-    console.log('ALEXDEBUG: sortedChapters', sortedChapters)
-
     const startIndex = sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start))
     const endIndex = argv.end
       ? sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
       : sortedChapters.length
 
-    console.log('ALEXDEBUG: startIndex', startIndex);
-    console.log('ALEXDEBUG: endIndex', endIndex);
-
     const finalChapterList = sortedChapters.slice(startIndex, endIndex);
 
     if (finalChapterList.length) {
-      console.log(`${finalChapterList.length} chapters found. Fetching chapters...`)
+      console.log(`${finalChapterList.length} chapters found. Fetching page links...`)
     } else {
       console.error('No chapters found within specified range');
 
@@ -90,98 +81,138 @@ axios.get(url)
 
     return finalChapterList;
   })
-  .then( chapterList => chapterList.map( async (chapterA) => {
-    const chapterURL = `http://www.mangareader.net${chapterA}`;
+  .then( chapterList => {
+    const promiseArray = chapterList.map( async (chapterA) => {
+      // this function performs a fetch on each of the chapter links to collect
+      // all image links available on the page for that specific chapter
 
-    return axios.get(chapterURL)
-      .then(res => res.data)
-      .then(pageHTML => {
-        const pageList$ = cheerio.load(pageHTML);
-        const pageList = pageList$('#pageMenu')
-          .find('option')
-          .toArray()
-          .map(option => option.attribs.value)
+      // *NOTE* adding '/1' to the end of the chapter url forces the scroll view
+      // of the site instead of the single page view. this means all images are
+      // loaded onto the page
+      let pageIdx = 1;
+      const chapterImageLinks = new Set([]);
 
-        return pageList;
-      })
-      .catch(err => {
-        //handle error
+      while (true) {
+        const chapterURL = `https://www.mangareader.net${chapterA}/${pageIdx}`;
+        const chapterHTML = await axios.get(chapterURL);
 
-        console.log("ALEXDEBUG: page collection error", err)
-      });
-  }))
-  .then( async promiseArray => {
-    const result = await Promise.all(promiseArray)
+        if (!chapterHTML.data) {
+          console.error(`No chapter found at ${chapterURL}`);
 
-    return result;
-  })
-  .then(async pageAnchorByChapterArray => {
-    const imageURLByChapterArray = [];
-    const chapterNameArray = [];
-
-    for(let i = 0; i < pageAnchorByChapterArray.length; i++){
-      const pageAnchorArray = pageAnchorByChapterArray[i];
-      const chapterName = pageAnchorByChapterArray[i][0];
-
-      const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
-        const pageURL = `http://www.mangareader.net${pageAnchor}`;
-
-        return axios.get(pageURL)
-          .then(res => res.data)
-          .then(pageHTML => {
-            const imageURL$ = cheerio.load(pageHTML);
-            const imageURL = imageURL$('#img')[0].attribs.src
-
-            return imageURL;
-          })
-          .catch(err => {
-            //handle error
-
-            console.log("ALEXDEBUG: page collection error", err)
-          });
-      }));
-
-      imageURLByChapterArray.push(pageImageMap);
-      chapterNameArray.push(chapterName);
-    }
-
-    return {chapterNameArray, imageURLByChapterArray};
-  })
-  .then(async ({ chapterNameArray, imageURLByChapterArray}) => Promise.all([
-    await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
-      const directory = `./series${chapterNameArray[chapterIdx]}`;
-      const chapterNumber = chapterNameArray[chapterIdx].split('/').pop()
-
-      await chapter.forEach(async (imageURL, imageIdx) => {
-        const directoryExists = fs.existsSync(directory)
-
-        if (!directoryExists) {
-          fs.mkdirSync(directory, { recursive: true }, (err) => {
-            // => [Error: EPERM: operation not permitted, mkdir 'C:\']
-            if (err) throw err;
-          });
+          process.exit()
         }
 
-        const urlArray = imageURL.split('.');
-        const filetype = urlArray[urlArray.length -1];
-        const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
+        const chapter$ = cheerio.load(chapterHTML.data);
+        const chapterImageLink = chapter$('img')
+          .toArray()
+          .filter(image => image.attribs.src.includes(chapterA))
+          .map(image => image.attribs.src.substring(2))
+          [0]
 
-        if (!fs.existsSync(dest)){
-          const options = {
-            url: imageURL,
-            dest, // Save to /path/to/dest/photo
-            extractFilename: false
+        if (!chapterImageLink || chapterImageLinks.has(chapterImageLink)) break;
+
+        chapterImageLinks.add(chapterImageLink);
+
+        pageIdx++;
+      }
+
+      console.log('ALEXDEBUG: chapterImageLinks', chapterImageLinks)
+
+      return Array.from(chapterImageLinks);
+    })
+
+    return [chapterList, promiseArray];
+  })
+  .then( async ([chapterList, promiseArray]) => {
+    // this function waits for all page links for chapter images to be collected
+    // then returns an object with the chapter list.
+
+    console.log('ALEXDEBUG: chapterList', chapterList);
+
+    const resolvedChapterImages = await Promise.all(promiseArray);
+
+    console.log('Chapter image links gathered. Preparing to download...');
+
+    return {
+      chapterNameArray: chapterList,
+      imageURLByChapterArray: resolvedChapterImages
+    }
+  })
+  // .then(async (pageAnchorByChapterArray) => {
+
+  //   console.log('Page links collected. ', pageAnchorByChapterArray);
+
+  //   const imageURLByChapterArray = [];
+  //   const chapterNameArray = [];
+
+  //   for(let i = 0; i < pageAnchorByChapterArray.length; i++){
+  //     const pageAnchorArray = pageAnchorByChapterArray[i];
+  //     const chapterName = pageAnchorByChapterArray[i][0];
+
+  //     const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
+  //       const pageURL = `http://www.mangareader.net${pageAnchor}`;
+
+  //       return axios.get(pageURL)
+  //         .then(res => res.data)
+  //         .then(pageHTML => {
+  //           const imageURL$ = cheerio.load(pageHTML);
+  //           const imageURL = imageURL$('#img')[0].attribs.src
+
+  //           return imageURL;
+  //         })
+  //         .catch(err => {
+  //           //handle error
+
+  //           console.log("ALEXDEBUG: page collection error", err)
+  //         });
+  //     }));
+
+  //     imageURLByChapterArray.push(pageImageMap);
+  //     chapterNameArray.push(chapterName);
+  //   }
+
+  //   return {chapterNameArray, imageURLByChapterArray};
+  // })
+  .then(async ({ chapterNameArray, imageURLByChapterArray }) => {
+    console.log('ALEXDEBUG: chapterNameArray', chapterNameArray);
+    console.log('ALEXDEBUG: imageURLByChapterArray', imageURLByChapterArray);
+
+    return Promise.all([
+      await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
+        const directory = `./series${chapterNameArray[chapterIdx]}`;
+        const chapterNumber = chapterNameArray[chapterIdx].split('/').pop()
+
+        await chapter.forEach(async (imageURL, imageIdx) => {
+          const directoryExists = fs.existsSync(directory)
+
+          if (!directoryExists) {
+            fs.mkdirSync(directory, { recursive: true }, (err) => {
+              // => [Error: EPERM: operation not permitted, mkdir 'C:\']
+              if (err) throw err;
+            });
           }
 
-          await download(options)
-            .then(({ filename, image }) => {
-              console.log('Saved to', filename) // Saved to /path/to/dest/photo
-            })
-            .catch((err) => console.error(`ALEXDEBUG: ${options.url} download error`,err))
-        }
+          const urlArray = imageURL.split('.');
+          const filetype = urlArray[urlArray.length - 1];
+          const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
+
+          if (!fs.existsSync(dest)){
+            const options = {
+              url: imageURL,
+              dest, // Save to /path/to/dest/photo
+              extractFilename: false
+            }
+
+            await download(options)
+              .then(({ filename, image }) => {
+                console.log('Saved to', filename) // Saved to /path/to/dest/photo
+              })
+              .catch((err) => console.error(`ALEXDEBUG: ${options.url} download error`,err))
+          }
+        })
       })
-    })
-  ]))
+    ])
+  })
   .catch(err => {
     //handle error
 
