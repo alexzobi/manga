@@ -77,8 +77,6 @@ axios.get(url)
       process.exit()
     }
 
-    console.log('ALEXDEBUG: finalChapterList', finalChapterList)
-
     return finalChapterList;
   })
   .then( chapterList => {
@@ -106,7 +104,7 @@ axios.get(url)
         const chapterImageLink = chapter$('img')
           .toArray()
           .filter(image => image.attribs.src.includes(chapterA))
-          .map(image => image.attribs.src.substring(2))
+          .map(image => `https:${image.attribs.src}`)
           [0]
 
         if (!chapterImageLink || chapterImageLinks.has(chapterImageLink)) break;
@@ -115,8 +113,6 @@ axios.get(url)
 
         pageIdx++;
       }
-
-      console.log('ALEXDEBUG: chapterImageLinks', chapterImageLinks)
 
       return Array.from(chapterImageLinks);
     })
@@ -127,8 +123,6 @@ axios.get(url)
     // this function waits for all page links for chapter images to be collected
     // then returns an object with the chapter list.
 
-    console.log('ALEXDEBUG: chapterList', chapterList);
-
     const resolvedChapterImages = await Promise.all(promiseArray);
 
     console.log('Chapter image links gathered. Preparing to download...');
@@ -138,44 +132,9 @@ axios.get(url)
       imageURLByChapterArray: resolvedChapterImages
     }
   })
-  // .then(async (pageAnchorByChapterArray) => {
-
-  //   console.log('Page links collected. ', pageAnchorByChapterArray);
-
-  //   const imageURLByChapterArray = [];
-  //   const chapterNameArray = [];
-
-  //   for(let i = 0; i < pageAnchorByChapterArray.length; i++){
-  //     const pageAnchorArray = pageAnchorByChapterArray[i];
-  //     const chapterName = pageAnchorByChapterArray[i][0];
-
-  //     const pageImageMap = await Promise.all(pageAnchorArray.map(async pageAnchor => {
-  //       const pageURL = `http://www.mangareader.net${pageAnchor}`;
-
-  //       return axios.get(pageURL)
-  //         .then(res => res.data)
-  //         .then(pageHTML => {
-  //           const imageURL$ = cheerio.load(pageHTML);
-  //           const imageURL = imageURL$('#img')[0].attribs.src
-
-  //           return imageURL;
-  //         })
-  //         .catch(err => {
-  //           //handle error
-
-  //           console.log("ALEXDEBUG: page collection error", err)
-  //         });
-  //     }));
-
-  //     imageURLByChapterArray.push(pageImageMap);
-  //     chapterNameArray.push(chapterName);
-  //   }
-
-  //   return {chapterNameArray, imageURLByChapterArray};
-  // })
   .then(async ({ chapterNameArray, imageURLByChapterArray }) => {
-    console.log('ALEXDEBUG: chapterNameArray', chapterNameArray);
-    console.log('ALEXDEBUG: imageURLByChapterArray', imageURLByChapterArray);
+    // here we take all of the chapter names and the images by chapter and
+    // download the files.
 
     return Promise.all([
       await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
@@ -188,6 +147,8 @@ axios.get(url)
           if (!directoryExists) {
             fs.mkdirSync(directory, { recursive: true }, (err) => {
               // => [Error: EPERM: operation not permitted, mkdir 'C:\']
+              console.log(`${directory} created`)
+
               if (err) throw err;
             });
           }
@@ -197,17 +158,22 @@ axios.get(url)
           const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
 
           if (!fs.existsSync(dest)){
+            console.log('Downloading ', imageURL)
             const options = {
               url: imageURL,
               dest, // Save to /path/to/dest/photo
               extractFilename: false
             }
 
-            await download(options)
-              .then(({ filename, image }) => {
-                console.log('Saved to', filename) // Saved to /path/to/dest/photo
-              })
-              .catch((err) => console.error(`ALEXDEBUG: ${options.url} download error`,err))
+            try {
+              const downloadRes = await download(options);
+              const { filename } = downloadRes;
+
+              console.log('Saved to', filename) // Saved to /path/to/dest/photo
+
+            } catch (err) {
+              console.error(`ALEXDEBUG: ${options.url} download error`,err)
+            }
           }
         })
       })
