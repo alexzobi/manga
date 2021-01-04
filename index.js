@@ -75,7 +75,7 @@ axios.get(url)
     const finalChapterList = sortedChapters.slice(startIndex, endIndex);
 
     if (finalChapterList.length) {
-      console.log(`${finalChapterList.length} chapters found. Fetching page links...`)
+      console.log(`${finalChapterList.length} chapters found. Fetching image links...`)
     } else {
       console.error('No chapters found within specified range');
 
@@ -84,14 +84,14 @@ axios.get(url)
 
     return finalChapterList;
   })
-  .then( chapterList => {
+  .then( async chapterList => {
     const promiseArray = chapterList.map( async (chapterA) => {
       // this function performs a fetch on each of the chapter links to collect
       // all image links available on the page for that specific chapter
 
       // *NOTE* adding '/1' to the end of the chapter url forces the scroll view
       // of the site instead of the single page view. this means all images are
-      // loaded onto the page
+      // loaded onto the page.
       let pageIdx = 1;
       const chapterImageLinks = new Set([]);
 
@@ -122,15 +122,8 @@ axios.get(url)
       return Array.from(chapterImageLinks);
     })
 
-    return {
-      chapterList,
-      promiseArray,
-    };
-  })
-  .then( async ({ chapterList, promiseArray }) => {
-    // this function waits for all page links for chapter images to be collected
-    // then returns an object with the chapter list.
-
+    // Then we wait for all page links for chapter images to be collected then
+    // return an object with the chapter list.
     const resolvedChapterImages = await Promise.all(promiseArray);
 
     console.log('Chapter image links gathered. Preparing to download...');
@@ -208,6 +201,8 @@ axios.get(url)
     };
   })
   .then(async ({ imageDirectoryName, chapterStart, chapterEnd }) => {
+    // create the cbz file and then delete the original directory where images
+    // are stored.
     console.log(`Finished downloading images. Creating archive file from ${imageDirectoryName}...`);
 
     await archive(comicName, imageDirectoryName, chapterStart, chapterEnd);
