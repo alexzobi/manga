@@ -1,7 +1,10 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
+const path = require('path');
+
 const download = require('./requestWrapper');
+const archive = require('./archiver');
 
 const argv = require('yargs')
   .usage('Usage: $0 <url> [options]')
@@ -31,6 +34,7 @@ const argv = require('yargs')
 */
 
 const url = process.argv[2];
+const comicName = url.split('/')[3];
 
 if (!url){
   console.error('You must give a url for this program to work!');
@@ -44,11 +48,10 @@ axios.get(url)
     // this function is responsible for finding all of the links for the available
     // chapters on the home page of the manga
 
-    const name = url.split('/')[3]
     const chapterList$ = cheerio.load(html);
     const chapterList = chapterList$('a')
       .filter((idx, elem) => {
-        return elem.attribs.href.startsWith(name, 1);
+        return elem.attribs.href.startsWith(comicName, 1);
       })
       .toArray()
       .map(elem => elem.attribs.href)
@@ -117,9 +120,12 @@ axios.get(url)
       return Array.from(chapterImageLinks);
     })
 
-    return [chapterList, promiseArray];
+    return {
+      chapterList,
+      promiseArray,
+    };
   })
-  .then( async ([chapterList, promiseArray]) => {
+  .then( async ({ chapterList, promiseArray }) => {
     // this function waits for all page links for chapter images to be collected
     // then returns an object with the chapter list.
 
@@ -132,22 +138,30 @@ axios.get(url)
       imageURLByChapterArray: resolvedChapterImages
     }
   })
-  .then(async ({ chapterNameArray, imageURLByChapterArray }) => {
+  .then(async ({
+    chapterNameArray,
+    imageURLByChapterArray,
+  }) => {
     // here we take all of the chapter names and the images by chapter and
     // download the files.
+    const imageDirectoryName = path.join(
+      __dirname,
+      'series',
+      comicName,
+      'images',
+    );
 
-    return Promise.all([
-      await imageURLByChapterArray.forEach(async (chapter, chapterIdx) => {
-        const directory = `./series${chapterNameArray[chapterIdx]}`;
+    await Promise.all(
+      imageURLByChapterArray.map(async (chapter, chapterIdx) => {
         const chapterNumber = chapterNameArray[chapterIdx].split('/').pop()
 
-        await chapter.forEach(async (imageURL, imageIdx) => {
-          const directoryExists = fs.existsSync(directory)
+        await Promise.all(chapter.map(async (imageURL, imageIdx) => {
+          const directoryExists = fs.existsSync(imageDirectoryName)
 
           if (!directoryExists) {
-            fs.mkdirSync(directory, { recursive: true }, (err) => {
+            fs.mkdirSync(imageDirectoryName, { recursive: true }, (err) => {
               // => [Error: EPERM: operation not permitted, mkdir 'C:\']
-              console.log(`${directory} created`)
+              console.log(`${imageDirectoryName} created`)
 
               if (err) throw err;
             });
@@ -155,7 +169,7 @@ axios.get(url)
 
           const urlArray = imageURL.split('.');
           const filetype = urlArray[urlArray.length - 1];
-          const dest = `${directory}/${chapterNumber}_${imageIdx + 1}.${filetype}`
+          const dest = `${imageDirectoryName}/${chapterNumber}_${imageIdx + 1}.${filetype}`
 
           if (!fs.existsSync(dest)){
             console.log('Downloading ', imageURL)
@@ -163,7 +177,7 @@ axios.get(url)
               url: imageURL,
               dest, // Save to /path/to/dest/photo
               extractFilename: false
-            }
+            };
 
             try {
               const downloadRes = await download(options);
@@ -175,9 +189,30 @@ axios.get(url)
               console.error(`ALEXDEBUG: ${options.url} download error`,err)
             }
           }
-        })
+        }))
       })
-    ])
+    )
+
+    return {
+      imageDirectoryName,
+      chapterStart: argv.start,
+      chapterEnd: argv.end,
+    };
+  })
+  .then(async ({ imageDirectoryName, chapterStart, chapterEnd }) => {
+    console.log(`Finished downloading. Creating archive file from ${imageDirectoryName}...`);
+
+    await archive(comicName, imageDirectoryName, chapterStart, chapterEnd);
+
+    console.log('Archive finished. Removing images...')
+
+    fs.rmdirSync(imageDirectoryName, { recursive: true }, (err) => {
+      if (err) {
+          throw err;
+      }
+
+      console.log(`${imageDirectoryName} is deleted!`);
+    });
   })
   .catch(err => {
     //handle error
