@@ -2,6 +2,8 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
+const {default: PQueue} = require('p-queue');
+
 
 const download = require('./requestWrapper');
 const archive = require('./archiver');
@@ -143,7 +145,11 @@ axios.get(url)
     imageURLByChapterArray,
   }) => {
     // here we take all of the chapter names and the images by chapter and
-    // download the files.
+    // download the files. The chapters are put into a promise queue with a
+    // concurrancy of one chapter at a time because having too many simultaneous
+    // downloads was causing images to not be fully downloaded and preventing all
+    // promises from resolving causing the code to lock up.
+
     const imageDirectoryName = path.join(
       __dirname,
       'series',
@@ -151,8 +157,10 @@ axios.get(url)
       'images',
     );
 
-    await Promise.all(
-      imageURLByChapterArray.map(async (chapter, chapterIdx) => {
+    const chapterQueue = new PQueue({concurrency: 1});
+
+    imageURLByChapterArray.forEach((chapter, chapterIdx) => {
+      chapterQueue.add(async () => {
         const chapterNumber = chapterNameArray[chapterIdx].split('/').pop()
 
         await Promise.all(chapter.map(async (imageURL, imageIdx) => {
@@ -172,7 +180,6 @@ axios.get(url)
           const dest = `${imageDirectoryName}/${chapterNumber}_${imageIdx + 1}.${filetype}`
 
           if (!fs.existsSync(dest)){
-            console.log('Downloading ', imageURL)
             const options = {
               url: imageURL,
               dest, // Save to /path/to/dest/photo
@@ -182,16 +189,17 @@ axios.get(url)
             try {
               const downloadRes = await download(options);
               const { filename } = downloadRes;
-
-              console.log('Saved to', filename) // Saved to /path/to/dest/photo
-
             } catch (err) {
               console.error(`ALEXDEBUG: ${options.url} download error`,err)
             }
           }
         }))
+
+        console.log(`Chapter ${chapterNumber} downloaded. ${chapterQueue.size} remaining...`)
       })
-    )
+    })
+
+    await chapterQueue.onIdle();
 
     return {
       imageDirectoryName,
@@ -200,7 +208,7 @@ axios.get(url)
     };
   })
   .then(async ({ imageDirectoryName, chapterStart, chapterEnd }) => {
-    console.log(`Finished downloading. Creating archive file from ${imageDirectoryName}...`);
+    console.log(`Finished downloading images. Creating archive file from ${imageDirectoryName}...`);
 
     await archive(comicName, imageDirectoryName, chapterStart, chapterEnd);
 
@@ -210,9 +218,9 @@ axios.get(url)
       if (err) {
           throw err;
       }
-
-      console.log(`${imageDirectoryName} is deleted!`);
     });
+
+    console.log(`${imageDirectoryName} deleted. \n\n Job complete.`);
   })
   .catch(err => {
     //handle error

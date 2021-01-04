@@ -3,31 +3,22 @@
 const fs = require('fs');
 const axios = require('axios');
 
-module.exports = ({ url, dest, timeout = 0, ...options }) => new Promise((resolve, reject) => {
+async function downloadImage ({ url, dest, ...options }) {
+  const writer = fs.createWriteStream(dest)
 
-  if (timeout) {
-    request.setTimeout(timeout);
-  }
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+    ...options,
+  });
 
-  return axios
-    .get(url, { ...options, responseType: 'stream'})
-    .then(res => res.data)
-    .then(data => {
-      data.pipe(fs.createWriteStream(dest)).once('close', () => resolve({ filename: dest }));
-    })
-    .catch(err => console.error('Request Error: ', err));
-    // .get(url, options, (res) => {
-    //   if (res.statusCode !== 200) {
-    //     // Consume response data to free up memory
-    //     res.resume();
-    //     reject(new Error('Request Failed.\n' +
-    //                      `Status Code: ${res.statusCode}`));
+  response.data.pipe(writer)
 
-    //     return;
-    //   }
+  return new Promise((resolve, reject) => {
+    writer.on('finish', () => resolve({ filename: dest }))
+    writer.on('error', reject)
+  })
+}
 
-    //   res.pipe(fs.createWriteStream(dest)).once('close', () => resolve({ filename: dest }));
-    // })
-    // .on('timeout', reject)
-    // .on('error', reject);
-});
+module.exports = downloadImage;
