@@ -14,11 +14,13 @@ const argv = require('yargs')
   .example('$0 http://www.mangareader.net/goblin-slayer -s 10 -e 20', 'get Goblin Slayer starting from chapter 10 and ending after chapter 20')
   .alias('s', 'start')
   .nargs('s', 1)
-  .describe('s', 'Chapter in the given chapter list to start from')
+  .describe('s', 'Chapter in the given chapter list to start from. Defaults to 1.')
   .default('s', 1)
   .alias('e', 'end')
   .nargs('e', 1)
-  .describe('e', 'Chapter in the given chapter list to end on')
+  .describe('e', 'Chapter in the given chapter list to end on. Defaults to start index.')
+  .alias('a', 'all')
+  .describe('a', 'Download all chapters from start index. Defaults to false.')
   .help('h')
   .alias('h', 'help')
   .epilog('copyright 2020')
@@ -67,10 +69,12 @@ axios.get(url)
       return 1;
     });
 
-    const startIndex = sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start))
-    const endIndex = argv.end
-      ? sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
-      : sortedChapters.length
+    const startIndex = sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.start));
+    const endIndex = argv.all
+      ? sortedChapters.length
+      : argv.end
+        ? sortedChapters.findIndex(chapterUrl => chapterUrl.split('/')[2] === String(argv.end)) + 1
+        : startIndex + 1
 
     const finalChapterList = sortedChapters.slice(startIndex, endIndex);
 
