@@ -199,6 +199,24 @@ const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterA
   return imageDirectoryName;
 }
 
+const archiveImages = async (mangaTitle, imageDirectoryName, chapterStart, chapterEnd) => {
+  // create the cbz file and then delete the original directory where images
+  // are stored.
+  console.log(`Finished downloading images. Creating archive file from ${imageDirectoryName}...`);
+
+  await archive(mangaTitle, imageDirectoryName, chapterStart, chapterEnd);
+
+  console.log('Archive finished. Removing images...')
+
+  fs.rmdirSync(imageDirectoryName, { recursive: true }, (err) => {
+    if (err) {
+        throw err;
+    }
+  });
+
+  console.log(`${imageDirectoryName} deleted. \n\n Job complete.`);
+}
+
 const selectChaptersAndDownload = async (url, start, end) => {
   const mangaTitle = await getMangaTitle(url);
   const chapterList = await collectChapterList(url, start, end);
@@ -212,7 +230,7 @@ const selectChaptersAndDownload = async (url, start, end) => {
   const chapterImageLinks = await collectAllChapterImageLinks(chapterList);
   const imageDirectoryName = await downloadChapterImages(mangaTitle, chapterList, chapterImageLinks);
 
-  console.log('ALEXDEBUG: imageDirectoryName', imageDirectoryName)
+  await archiveImages(mangaTitle, imageDirectoryName, start, end);
 }
 
 module.exports = selectChaptersAndDownload;
