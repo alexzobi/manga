@@ -28,7 +28,7 @@ const archive = (comicName, imageDirectoryName, chapterStart, chapterEnd) => {
     // listen for all archive data to be written
     // 'close' event is fired only when a file descriptor is involved
     output.on('close', function() {
-      console.log(`File size is ${(archive.pointer() / 1024).toFixed(1)}kb`);
+      console.log(`File size is ${(archive.pointer() / 1024 / 1024).toFixed(1)}Mb`);
       console.log('archiver has been finalized and the output file descriptor has closed.');
 
       resolve();

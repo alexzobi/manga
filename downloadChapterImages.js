@@ -48,7 +48,7 @@ const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterA
           };
 
           try {
-            const downloadRes = await download(options);
+            await download(options);
           } catch (err) {
             console.error(`ALEXDEBUG: ${options.url} download error`,err)
           }
