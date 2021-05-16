@@ -44,8 +44,6 @@ const getSiteName = (url) => {
   return site.groups.site;
 }
 
-console.log('ALEXDEBUG: process.argv[2]', process.argv[2])
-
 const selectSiteAndCollect = async () => {
   const url = process.argv[2];
   const site = getSiteName(url);

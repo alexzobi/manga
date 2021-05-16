@@ -1,11 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const fs = require('fs');
-const path = require('path');
-const {default: PQueue} = require('p-queue');
-
-const download = require('../requestWrapper');
-const archive = require('../archiver');
+const downloadChapterImages = require('../downloadChapterImages');
+const archiveImages = require('../archiveImages');
 
 const getMangaTitle = async (url) => {
   const chapterListPage = await axios.get(url);
@@ -122,101 +118,6 @@ const collectAllChapterImageLinks = async (chapterList) => {
   return Promise.all(chapterImageLinkPromises);
 }
 
-const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterArray) => {
-  // here we take all of the chapter names and the images by chapter and
-  // download the files. The chapters are put into a promise queue with a
-  // concurrancy of one chapter at a time because having too many simultaneous
-  // downloads was causing images to not be fully downloaded and preventing all
-  // promises from resolving causing the code to lock up.
-
-  const imageDirectoryName = path.join(
-    __dirname,
-    '..',
-    'series',
-    mangaTitle,
-    'images',
-  );
-
-  const chapterQueue = new PQueue({concurrency: 1});
-
-  imageURLByChapterArray.forEach((chapter, chapterIdx) => {
-    chapterQueue.add(async () => {
-      const chapterNumber = chapterList[chapterIdx].split('/').pop()
-
-      await Promise.all(chapter.map(async (imageURL, imageIdx) => {
-        const directoryExists = fs.existsSync(imageDirectoryName)
-
-        if (!directoryExists) {
-          fs.mkdirSync(imageDirectoryName, { recursive: true }, (err) => {
-            // => [Error: EPERM: operation not permitted, mkdir 'C:\']
-            console.log(`${imageDirectoryName} created`)
-
-            if (err) throw err;
-          });
-        }
-
-        const urlArray = imageURL.split('.');
-        const filetype = urlArray[urlArray.length - 1];
-        const dest = `${imageDirectoryName}/${chapterNumber}_${imageIdx + 1}.${filetype}`
-
-        if (!fs.existsSync(dest)){
-          const options = {
-            headers: {
-              authority: "s31.mkklcdnv6tempv2.com",
-              method: "GET",
-              scheme: "https",
-              accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-              "accept-encoding": "gzip, deflate, br",
-              "accept-language": "en-US,en;q=0.9",
-              dnt: "1",
-              referer: "https://manganelo.com/",
-              "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"90\", \"Google Chrome\";v=\"90\"",
-              "sec-ch-ua-mobile": "?0",
-              "sec-fetch-dest": "image",
-              "sec-fetch-mode": "no-cors",
-              "sec-fetch-site": "cross-site",
-              "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-            },
-            url: imageURL,
-            dest, // Save to /path/to/dest/photo
-            extractFilename: false
-          };
-
-          try {
-            const downloadRes = await download(options);
-          } catch (err) {
-            console.error(`ALEXDEBUG: ${options.url} download error`,err)
-          }
-        }
-      }))
-
-      console.log(`Chapter ${chapterNumber} downloaded. ${chapterQueue.size} remaining...`)
-    })
-  })
-
-  await chapterQueue.onIdle();
-
-  return imageDirectoryName;
-}
-
-const archiveImages = async (mangaTitle, imageDirectoryName, chapterStart, chapterEnd) => {
-  // create the cbz file and then delete the original directory where images
-  // are stored.
-  console.log(`Finished downloading images. Creating archive file from ${imageDirectoryName}...`);
-
-  await archive(mangaTitle, imageDirectoryName, chapterStart, chapterEnd);
-
-  console.log('Archive finished. Removing images...')
-
-  fs.rmdirSync(imageDirectoryName, { recursive: true }, (err) => {
-    if (err) {
-        throw err;
-    }
-  });
-
-  console.log(`${imageDirectoryName} deleted. \n\n Job complete.`);
-}
-
 const selectChaptersAndDownload = async (url, start, end) => {
   const mangaTitle = await getMangaTitle(url);
   const chapterList = await collectChapterList(url, start, end);
@@ -227,8 +128,27 @@ const selectChaptersAndDownload = async (url, start, end) => {
     return;
   }
 
+  const options = {
+    headers: {
+      authority: "s31.mkklcdnv6tempv2.com",
+      method: "GET",
+      scheme: "https",
+      accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "accept-encoding": "gzip, deflate, br",
+      "accept-language": "en-US,en;q=0.9",
+      dnt: "1",
+      referer: "https://manganelo.com/",
+      "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"90\", \"Google Chrome\";v=\"90\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-fetch-dest": "image",
+      "sec-fetch-mode": "no-cors",
+      "sec-fetch-site": "cross-site",
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
+    },
+  };
+
   const chapterImageLinks = await collectAllChapterImageLinks(chapterList);
-  const imageDirectoryName = await downloadChapterImages(mangaTitle, chapterList, chapterImageLinks);
+  const imageDirectoryName = await downloadChapterImages(mangaTitle, chapterList, chapterImageLinks, options);
 
   await archiveImages(mangaTitle, imageDirectoryName, start, end);
 }
