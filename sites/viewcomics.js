@@ -3,7 +3,7 @@ const cheerio = require('cheerio');
 const downloadChapterImages = require('../downloadChapterImages');
 const archiveImages = require('../archiveImages');
 
-const getMangaTitle = async (url) => {
+const getComicTitle = async (url) => {
   const chapterListPage = await axios.get(url);
 
   if (!chapterListPage.data) {
@@ -21,17 +21,18 @@ const getMangaTitle = async (url) => {
     if (
       !header
       || typeof header !== 'object'
-      || !header.parent
-      || !header.parent.attribs
-      || !header.parent.attribs.class
+      || !header.attribs
+      || !header.attribs.class
     ) return false;
 
-    return header.parent.attribs.class.includes('story-info-right')
+    return header.attribs.class.includes('title')
   })
 
   if (!titles.length) return 'title not found';
 
-  return titles[0].children[0].data;
+  const title =  titles[0].children[0].data;
+
+  return title.replaceAll(/[(|)]/g, '').trim();
 }
 
 const collectChapterList = async (url, start, end) => {
@@ -54,8 +55,8 @@ const collectChapterList = async (url, start, end) => {
         || !elem.attribs.class
       ) return false;
 
-      if (elem.attribs.class.includes('chapter-name')) {
-        const chapterNumber = +elem.attribs.href.split('/').pop().split('_')[1]
+      if (elem.attribs.class.includes('ch-name')) {
+        const chapterNumber = +elem.attribs.href.split('/').pop().split('-')[1]
 
         if (
           chapterNumber >= start
@@ -73,8 +74,8 @@ const collectChapterList = async (url, start, end) => {
     .map(elem => elem.attribs.href)
 
   const sortedChapters = Array.from(new Set(chapterList)).sort((a, b) => {
-    const chapterANumber = +a.split('/').pop().split('_')[1]
-    const chapterBNumber = +b.split('/').pop().split('_')[1]
+    const chapterANumber = +a.split('/').pop().split('-')[1]
+    const chapterBNumber = +b.split('/').pop().split('-')[1]
 
     if (chapterANumber < chapterBNumber) return -1;
 
@@ -107,26 +108,27 @@ const collectChapterImageLinks = async (chapterUrl) => {
       || !image.parent.attribs.class
     ) return false;
 
-    return image.parent.attribs.class.includes('container-chapter-reader')
+    return image.parent.attribs.class.includes('chapter-container')
   })
   .map(image => image.attribs.src)
 }
 
 const collectAllChapterImageLinks = async (chapterList) => {
-  const chapterImageLinkPromises = chapterList.map(chapter => collectChapterImageLinks(chapter));
+  const chapterImageLinkPromises = chapterList.map(chapter => collectChapterImageLinks(`${chapter}/full`));
 
   return Promise.all(chapterImageLinkPromises);
 }
 
-const getChapterNumber = chapterUrl => chapterUrl.split('/').pop();
+const getChapterNumber = chapterUrl => chapterUrl
+  .split('/')
+  .pop()
+  .split('-')
+  .pop();
 
-const getFileTypeFromImageUrl = imageUrl => {
-  const urlArray = imageUrl.split('.');
-  return urlArray[urlArray.length - 1];
-};
+const getFileTypeFromImageUrl = () => 'jpeg';
 
 const selectChaptersAndDownload = async (url, start, end) => {
-  const mangaTitle = await getMangaTitle(url);
+  const comicTitle = await getComicTitle(url);
   const chapterList = await collectChapterList(url, start, end);
 
   if (!chapterList) {
@@ -135,37 +137,17 @@ const selectChaptersAndDownload = async (url, start, end) => {
     return;
   }
 
-  const options = {
-    headers: {
-      authority: "s31.mkklcdnv6tempv2.com",
-      method: "GET",
-      scheme: "https",
-      accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      "accept-encoding": "gzip, deflate, br",
-      "accept-language": "en-US,en;q=0.9",
-      dnt: "1",
-      referer: "https://manganelo.com/",
-      "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"90\", \"Google Chrome\";v=\"90\"",
-      "sec-ch-ua-mobile": "?0",
-      "sec-fetch-dest": "image",
-      "sec-fetch-mode": "no-cors",
-      "sec-fetch-site": "cross-site",
-      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-    },
-  };
-
   const chapterImageLinks = await collectAllChapterImageLinks(chapterList);
 
   const imageDirectoryName = await downloadChapterImages(
-    mangaTitle,
+    comicTitle,
     chapterList,
     chapterImageLinks,
     getChapterNumber,
     getFileTypeFromImageUrl,
-    options
   );
 
-  await archiveImages(mangaTitle, imageDirectoryName, start, end);
+  await archiveImages(comicTitle, imageDirectoryName, start, end);
 }
 
 module.exports = selectChaptersAndDownload;

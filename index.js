@@ -6,6 +6,7 @@ const {default: PQueue} = require('p-queue');
 
 
 const manganeloDownload = require('./sites/manganelo');
+const viewcomicsDownload = require('./sites/viewcomics');
 const download = require('./requestWrapper');
 const archive = require('./archiver');
 
@@ -54,10 +55,17 @@ const selectSiteAndCollect = async () => {
       console.error('You must give a url for this program to work!');
 
       break;
+
     case 'manganelo':
       downloadFunc = manganeloDownload;
 
       break;
+
+    case 'viewcomics':
+      downloadFunc = viewcomicsDownload;
+
+      break;
+
     default:
       console.error('Downloader for this site not yet implemented');
 

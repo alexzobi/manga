@@ -3,7 +3,14 @@ const path = require('path');
 const {default: PQueue} = require('p-queue');
 const download = require('./requestWrapper');
 
-const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterArray, siteSpecificOptions) => {
+const downloadChapterImages = async (
+  mangaTitle,
+  chapterList,
+  imageURLByChapterArray,
+  getChapterNumber,
+  getFileTypeFromImageUrl,
+  siteSpecificOptions,
+) => {
   // here we take all of the chapter names and the images by chapter and
   // download the files. The chapters are put into a promise queue with a
   // concurrancy of one chapter at a time because having too many simultaneous
@@ -21,7 +28,7 @@ const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterA
 
   imageURLByChapterArray.forEach((chapter, chapterIdx) => {
     chapterQueue.add(async () => {
-      const chapterNumber = chapterList[chapterIdx].split('/').pop()
+      const chapterNumber = getChapterNumber(chapterList[chapterIdx]);
 
       await Promise.all(chapter.map(async (imageURL, imageIdx) => {
         const directoryExists = fs.existsSync(imageDirectoryName)
@@ -35,8 +42,7 @@ const downloadChapterImages = async (mangaTitle, chapterList, imageURLByChapterA
           });
         }
 
-        const urlArray = imageURL.split('.');
-        const filetype = urlArray[urlArray.length - 1];
+        const filetype = getFileTypeFromImageUrl(imageURL);
         const dest = `${imageDirectoryName}/${chapterNumber}_${imageIdx + 1}.${filetype}`
 
         if (!fs.existsSync(dest)){
