@@ -56,7 +56,12 @@ const selectSiteAndCollect = async () => {
 
       break;
 
-    case 'manganelo':
+    case 'chap.manganelo':
+      downloadFunc = manganeloDownload;
+
+      break;
+
+    case 'readmanganato':
       downloadFunc = manganeloDownload;
 
       break;

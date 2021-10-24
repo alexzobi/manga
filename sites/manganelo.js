@@ -55,7 +55,7 @@ const collectChapterList = async (url, start, end) => {
       ) return false;
 
       if (elem.attribs.class.includes('chapter-name')) {
-        const chapterNumber = +elem.attribs.href.split('/').pop().split('_')[1]
+        const chapterNumber = +elem.attribs.href.split('/').pop().split('-')[1]
 
         if (
           chapterNumber >= start
@@ -73,8 +73,8 @@ const collectChapterList = async (url, start, end) => {
     .map(elem => elem.attribs.href)
 
   const sortedChapters = Array.from(new Set(chapterList)).sort((a, b) => {
-    const chapterANumber = +a.split('/').pop().split('_')[1]
-    const chapterBNumber = +b.split('/').pop().split('_')[1]
+    const chapterANumber = +a.split('/').pop().split('-')[1]
+    const chapterBNumber = +b.split('/').pop().split('-')[1]
 
     if (chapterANumber < chapterBNumber) return -1;
 
@@ -129,7 +129,9 @@ const selectChaptersAndDownload = async (url, start, end) => {
   const mangaTitle = await getMangaTitle(url);
   const chapterList = await collectChapterList(url, start, end);
 
-  if (!chapterList) {
+  console.log(`Found ${chapterList.length} chapter${chapterList.length !== 1 ? 's' : ''}`);
+
+  if (!chapterList || !chapterList.length) {
     console.log("No chapters found");
 
     return;
@@ -156,6 +158,8 @@ const selectChaptersAndDownload = async (url, start, end) => {
 
   const chapterImageLinks = await collectAllChapterImageLinks(chapterList);
 
+  console.log(`Found ${chapterImageLinks.length} chapter image link${chapterImageLinks.length !== 1 ? 's' : ''}`);
+
   const imageDirectoryName = await downloadChapterImages(
     mangaTitle,
     chapterList,
@@ -164,6 +168,8 @@ const selectChaptersAndDownload = async (url, start, end) => {
     getFileTypeFromImageUrl,
     options
   );
+
+  console.log(`Archive directory name is ${imageDirectoryName}`);
 
   await archiveImages(mangaTitle, imageDirectoryName, start, end);
 }
