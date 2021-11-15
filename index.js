@@ -28,14 +28,6 @@ const argv = require('yargs')
   .epilog('copyright 2020')
   .argv;
 
-/*
- *** NOTE: ***
- After running this file, the code might hang and not all images will be downloaded.
- I have a feeling this has to do with the websites preventing this sort of behavior.
- To handle this, just kill and re-run the script. The remaining images will automatically
- be downloaded.
-*/
-
 const getSiteName = (url) => {
   const regex = /^(https?:\/\/)?(www\.)?(?<site>\S+)\./;
   const site = url.match(regex);

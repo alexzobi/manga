@@ -43,7 +43,10 @@ const downloadChapterImages = async (
         }
 
         const filetype = getFileTypeFromImageUrl(imageURL);
-        const dest = `${imageDirectoryName}/${chapterNumber}_${imageIdx + 1}.${filetype}`
+        const dest = path.join(
+          imageDirectoryName,
+          `${chapterNumber}_${imageIdx + 1}.${filetype}`,
+        );
 
         if (!fs.existsSync(dest)){
           const options = {
